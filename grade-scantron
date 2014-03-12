@@ -112,6 +112,7 @@ class FormData(object):
 
 class GradeRecord(Record):
     """
+    .. attribute:: exam
     .. attribute:: points
     .. attribute:: missed_questions
     .. attribute:: offset
@@ -158,6 +159,7 @@ def get_grade_rec(exam, form, options):
                         your_answer=answer))
 
         grade_recs[offset] = GradeRecord(
+            exam=exam,
             points=points,
             missed_questions=missed_questions,
             offset=offset,
@@ -243,6 +245,8 @@ def print_question_analytics(forms, exams):
 def get_export_points_and_feedback(grade_rec, options):
     points = grade_rec.points
     feedback_items = []
+
+    feedback_items.append("Form %s" % grade_rec.exam.form_id)
 
     if grade_rec.missed_questions:
         feedback_items.append(
@@ -421,8 +425,8 @@ def main():
                     print fbi
 
                 print
+                print "Name: %s, %s" % (e.last_name, e.initial)
                 print "Points: %d" % points
-                print "Offset: %d" % grade_rec.offset
 
 if __name__ == "__main__":
     main()
