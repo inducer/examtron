@@ -1,0 +1,404 @@
+#! /usr/bin/env python
+
+from __future__ import division
+
+from pytools import Record
+import sys
+import re
+
+#from warnings import warn
+
+import logging
+logger = logging.getLogger(__name__)
+
+
+class ScantronExam(Record):
+    pass
+
+
+def read_scantron_file(lines, options):
+    for l in lines:
+        if not l.strip():
+            continue
+        if len(l) == 1:
+            continue
+        if len(l) != 175:
+            raise ValueError("invalid record length")
+
+        yield ScantronExam(
+            last_name=l[40:50].rstrip(),
+            initial=l[50],
+            university_id=l[51:60],
+            section=l[60:63],
+            network_id=l[63:71].lower().strip(),
+            form_id=l[71],
+            answers=l[72:168],
+            )
+
+
+def separate_out_keys(exams):
+    scantron_keys = {}
+
+    new_exams = []
+
+    for s in exams:
+        if (s.last_name.rstrip() == "KEY"
+                and s.university_id.startswith("99999999")):
+            if s.form_id in scantron_keys:
+                raise ValueError("two keys for form id '%s'" % s.form_id)
+            scantron_keys[s.form_id] = s
+        else:
+            new_exams.append(s)
+
+    return new_exams, scantron_keys
+
+
+def read_latex_key(name, inf, forms):
+    version_re = re.compile("^version: (.+)$")
+    question_re = re.compile("^question ([0-9]+): (.+)$")
+
+    lines = list(inf)
+
+    version_match = version_re.match(lines[0])
+    if version_match is None:
+        raise RuntimeError("version line not found in '%s'" % name)
+    form_id = version_match.group(1)
+    lines = lines[1:]
+
+    form = forms[form_id]
+    for l in lines:
+        question_match = question_re.match(l)
+        if question_match is None:
+            raise RuntimeError(
+                "invalid line found in '%s': %s"
+                % (name, l))
+
+        question_nr = int(question_match.group(1))
+        action = question_match.group(2)
+
+        if action == "dump":
+            form.dump_question(question_nr)
+        else:
+            assert len(action) == 1
+            answer = ord(action) - ord("A")
+
+            form.add_correct_answer(question_nr, answer)
+
+
+class FormData(object):
+    def __init__(self, form_id):
+        self.form_id = form_id
+
+        self.dumped_questions = set()
+
+        # map question nr to set of correct answers as set of 0-based numbers
+        self.answers = {}
+
+    def dump_question(self, question_nr):
+        """
+        :arg question_nr: 1-based
+        """
+
+        self.dumped_questions.add(question_nr)
+
+    def add_correct_answer(self, question_nr, answer_nr):
+        """
+        :arg question_nr: 1-based
+        :arg answer_nr: 0-based
+        """
+
+        self.answers.setdefault(question_nr, set()).add(answer_nr)
+
+
+class GradeRecord(Record):
+    """
+    .. attribute:: points
+    .. attribute:: missed_questions
+    .. attribute:: offset
+    """
+
+
+class MissedQuestionRecord(Record):
+    """
+    .. attribute:: question_nr
+    .. attribute:: correct_answers
+    .. attribute:: your_answer
+    """
+
+
+def get_grade_rec(exam, form, options):
+    grade_recs = {}
+
+    for offset in options.try_offsets:
+        points = options.bonus
+        missed_questions = []
+
+        for problem_nr, answer in enumerate(exam.answers):
+            # make 1-based
+            problem_nr += 1 + offset
+
+            if answer == " ":
+                continue
+
+            # make 0-based
+            answer = int(answer) - 1
+            assert 0 <= answer <= 4
+
+            if problem_nr in form.dumped_questions:
+                continue
+
+            correct_answers = form.answers.get(problem_nr, set())
+            if answer in correct_answers:
+                points += 1
+            else:
+                missed_questions.append(
+                    MissedQuestionRecord(
+                        problem_nr=problem_nr,
+                        correct_answers=correct_answers,
+                        your_answer=answer))
+
+        grade_recs[offset] = GradeRecord(
+            points=points,
+            missed_questions=missed_questions,
+            offset=offset,
+            )
+
+    from pytools import argmax2
+    best_result = argmax2(
+        (grade_rec, grade_rec.points)
+        for grade_rec in grade_recs.itervalues())
+
+    if best_result.points > grade_recs[0].points:
+        logger.info(
+            "improved result with offset for %s: %d vs %d"
+            % (exam.network_id, best_result.points, grade_recs[0].points))
+
+    return best_result
+
+
+def stringify_answer(answer):
+    if answer is None:
+        return "no answer"
+    else:
+        return chr(65+answer)
+
+
+def print_question_analytics(forms, exams):
+    for form_id in sorted(forms):
+        print 75*"-"
+        print "FORM %s" % form_id
+        print 75*"-"
+        form = forms[form_id]
+        for question_nr in sorted(
+                list(form.answers.iterkeys())
+                + list(form.dumped_questions)):
+            answer_freqs = {}
+            total_answers = 0
+
+            for e in exams:
+                if e.form_id != form_id:
+                    continue
+
+                answer = e.answers[question_nr-1]
+                if answer == " ":
+                    answer = None
+                else:
+                    answer = int(answer)-1
+                    assert 0 <= answer <= 4
+                    total_answers += 1
+
+                answer_freqs[answer] = answer_freqs.get(answer, 0) + 1
+
+            if question_nr in form.dumped_questions:
+                print "Form %s Question %d: UNGRADED" % (
+                    form_id, question_nr)
+                continue
+
+            if total_answers == 0:
+                print "Form %s Question %d: NO ANSWERS" % (
+                    form_id, question_nr)
+                continue
+
+            correct_answers = form.answers[question_nr]
+
+            corr_str = ", ".join(
+                "%s: %2.0f" % (
+                    stringify_answer(answer),
+                    100*answer_freqs.get(answer, 0)/total_answers)
+                for answer in correct_answers)
+            incorr_str = ", ".join(
+                "%s: %2.0f" % (
+                    stringify_answer(answer),
+                    100*answer_freqs.get(answer, 0)/total_answers)
+                for answer in sorted(
+                    answer_freqs,
+                    key=lambda answer: answer_freqs[answer],
+                    reverse=True)
+                if answer not in correct_answers)
+
+            print "Form %s Question %d: [[ %s ]] %s" % (
+                form_id, question_nr, corr_str, incorr_str)
+
+
+def main():
+    from optparse import OptionParser
+    parser = OptionParser(usage="%prog [options] DAT_FILES")
+
+    parser.add_option("--debug", action="store_true")
+    parser.add_option(
+        "--latex-key", help="Add a LaTeX-generated key data file",
+        metavar="FILE", action="append")
+    parser.add_option(
+        "--bonus", help="Add free bonus points",
+        metavar="POINTS", type=int)
+    parser.add_option(
+        "--full-score", help="Set full score for determining percentages",
+        metavar="POINTS", type=int)
+    parser.add_option(
+        "--cap", help="Don't propagate more than this "
+        "number of points to grade export",
+        metavar="POINTS", type=int)
+    parser.add_option(
+        "--try-offsets", help="Try a few offsets for Scantron grading "
+        "(should include 0)",
+        metavar="OFFSET,OFFSET")
+
+    parser.add_option("--print-grades", action="store_true")
+    parser.add_option("--print-stats", action="store_true")
+    parser.add_option("--print-question-analytics", action="store_true")
+    parser.add_option("--write-csv", metavar="FILE")
+
+    options, args = parser.parse_args()
+
+    if not args:
+        parser.print_help()
+        sys.exit(1)
+
+    if options.debug:
+        logging.basicConfig(level=logging.INFO)
+
+    if options.try_offsets is not None:
+        options.try_offsets = [int(o) for o in options.try_offsets.split(",")]
+        assert 0 in options.try_offsets
+    else:
+        options.try_offsets = [0]
+
+    exams = []
+    for arg in args:
+        with open(arg, "rt") as inf:
+            exams.extend(list(read_scantron_file(inf, options)))
+
+    # {{{ figure out form versions
+
+    form_ids = sorted(set(s.form_id for s in exams))
+    logger.info("%d form versions found: %s" % (
+        len(form_ids), form_ids))
+
+    forms = dict(
+        (form_id, FormData(form_id))
+        for form_id in form_ids)
+
+    # }}}
+
+    # {{{ handle scantron keys
+
+    exams, scantron_keys = separate_out_keys(exams)
+
+    logger.info("%d scantron keys found: %s" % (
+        len(scantron_keys), sorted(scantron_keys.iterkeys())))
+
+    # }}}
+
+    # {{{ handle latex keys
+
+    if options.latex_key is not None:
+        for fn in options.latex_key:
+            with open(fn, "rt") as inf:
+                read_latex_key(fn, inf, forms)
+
+        for form_id, key in scantron_keys.iteritems():
+            grade_rec = get_grade_rec(key, forms[key.form_id], options)
+            logger.info("scantron key for form '%s' received %d points" % (
+                form_id, grade_rec.points))
+
+    # }}}
+
+    if options.print_stats:
+        point_counts = []
+        form_point_counts = {}
+        for e in exams:
+            grade_rec = get_grade_rec(e, forms[e.form_id], options)
+            point_counts.append(grade_rec.points)
+            form_point_counts.setdefault(e.form_id, []) \
+                .append(grade_rec.points)
+
+        from pytools import string_histogram, average, std_deviation
+
+        print string_histogram(
+            point_counts,
+            min_value=0, max_value=(max(point_counts)), bin_count=15,
+            width=30)
+
+        print
+        print "Mean: %f" % (average(point_counts))
+        print "Std deviation: %f" % (std_deviation(point_counts, False))
+        print
+        for form_id in sorted(form_point_counts):
+            print "Form %s mean: %f" % (
+                form_id, average(form_point_counts[form_id]))
+
+    if options.print_grades:
+        for e in exams:
+            grade_rec = get_grade_rec(e, forms[e.form_id], options)
+            print "%-20s | %-10s | % 6.1f %% | % 3d points" % (
+                e.last_name + ", " + e.initial, e.network_id,
+                grade_rec.points/options.full_score*100, grade_rec.points)
+
+    if options.print_question_analytics:
+        print_question_analytics(forms, exams)
+
+    if options.write_csv:
+        import csv
+        with open(options.write_csv, 'wb') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(
+                ["NetID", "Last Name", "Initial", "Points", "Feedback"])
+
+            for e in exams:
+                grade_rec = get_grade_rec(e, forms[e.form_id], options)
+
+                points = grade_rec.points
+                feedback_items = []
+
+                if grade_rec.missed_questions:
+                    feedback_items.append(
+                        "Incorrect: "
+                        + " - ".join(
+                            "P%d: %s (OK: %s)"
+                            % (mqr.problem_nr,
+                                stringify_answer(mqr.your_answer),
+                                "".join(
+                                    stringify_answer(ans)
+                                    for ans in mqr.correct_answers))
+                            for mqr in grade_rec.missed_questions)
+                        )
+                else:
+                    feedback_items.append("All answers correct.")
+
+                if options.cap and points > options.cap:
+                    feedback_items.append(
+                        "Achieved points: %d. Extra credit capped to: %d/%d."
+                        % (points, options.cap, options.full_score))
+                    points = options.cap
+
+                if grade_rec.offset:
+                    feedback_items.append(
+                        "Offset was applied. Form Q1 -> Exam Q%d"
+                        % (1+grade_rec.offset))
+
+                csvwriter.writerow(
+                    [e.network_id, e.last_name, e.initial,
+                        points, " * ".join(feedback_items)])
+
+if __name__ == "__main__":
+    main()
