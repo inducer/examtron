@@ -240,6 +240,40 @@ def print_question_analytics(forms, exams):
                 form_id, question_nr, corr_str, incorr_str)
 
 
+def get_export_points_and_feedback(grade_rec, options):
+    points = grade_rec.points
+    feedback_items = []
+
+    if grade_rec.missed_questions:
+        feedback_items.append(
+            "Incorrect: "
+            + " - ".join(
+                "P%d: %s (OK: %s)"
+                % (mqr.problem_nr,
+                    stringify_answer(mqr.your_answer),
+                    "".join(
+                        stringify_answer(ans)
+                        for ans in mqr.correct_answers))
+                for mqr in grade_rec.missed_questions
+                if mqr.correct_answers)
+            )
+    else:
+        feedback_items.append("All answers correct.")
+
+    if options.cap and points > options.cap:
+        feedback_items.append(
+            "Achieved points: %d. Extra credit capped to: %d/%d."
+            % (points, options.cap, options.full_score))
+        points = options.cap
+
+    if grade_rec.offset:
+        feedback_items.append(
+            "Offset was applied. Form Q1 -> Exam Q%d"
+            % (1+grade_rec.offset))
+
+    return points, feedback_items
+
+
 def main():
     from optparse import OptionParser
     parser = OptionParser(usage="%prog [options] DAT_FILES")
@@ -267,6 +301,7 @@ def main():
     parser.add_option("--print-stats", action="store_true")
     parser.add_option("--print-question-analytics", action="store_true")
     parser.add_option("--write-csv", metavar="FILE")
+    parser.add_option("--print-student-report", metavar="NETWORK_ID")
 
     options, args = parser.parse_args()
 
@@ -367,38 +402,27 @@ def main():
             for e in exams:
                 grade_rec = get_grade_rec(e, forms[e.form_id], options)
 
-                points = grade_rec.points
-                feedback_items = []
-
-                if grade_rec.missed_questions:
-                    feedback_items.append(
-                        "Incorrect: "
-                        + " - ".join(
-                            "P%d: %s (OK: %s)"
-                            % (mqr.problem_nr,
-                                stringify_answer(mqr.your_answer),
-                                "".join(
-                                    stringify_answer(ans)
-                                    for ans in mqr.correct_answers))
-                            for mqr in grade_rec.missed_questions)
-                        )
-                else:
-                    feedback_items.append("All answers correct.")
-
-                if options.cap and points > options.cap:
-                    feedback_items.append(
-                        "Achieved points: %d. Extra credit capped to: %d/%d."
-                        % (points, options.cap, options.full_score))
-                    points = options.cap
-
-                if grade_rec.offset:
-                    feedback_items.append(
-                        "Offset was applied. Form Q1 -> Exam Q%d"
-                        % (1+grade_rec.offset))
+                points, feedback_items = \
+                    get_export_points_and_feedback(grade_rec, options)
 
                 csvwriter.writerow(
                     [e.network_id, e.last_name, e.initial,
                         points, " * ".join(feedback_items)])
+
+    if options.print_student_report:
+        for e in exams:
+            if e.network_id.lower() == options.print_student_report.lower():
+                grade_rec = get_grade_rec(e, forms[e.form_id], options)
+
+                points, feedback_items = \
+                    get_export_points_and_feedback(grade_rec, options)
+
+                for fbi in feedback_items:
+                    print fbi
+
+                print
+                print "Points: %d" % points
+                print "Offset: %d" % grade_rec.offset
 
 if __name__ == "__main__":
     main()
