@@ -1,0 +1,30 @@
+\documentclass{article}
+
+\usepackage{examtron}
+
+\def\examversion{A}
+\setboolean{issolution}{true}
+\writesolution{MY}{\examversion}
+
+\begin{document}
+  \textbf{My exam}
+
+  \begin{examtronproblem}{Weekday}
+    What day of the week is it?
+    \begin{examtronchoices}
+      \item Wednesday
+      \item Tuesday
+      \item \correct\ Thursday
+      \item Monday
+    \end{examtronchoices}
+  \end{examtronproblem}
+
+  \begin{examtronproblem}{Mental state}
+    Consider the following two statements:
+    \begin{enumerate}[(1)]
+      \item It is Monday.
+      \item I am ecstatic.
+    \end{enumerate}
+    \implicationchoices{D}
+  \end{examtronproblem}
+\end{document}

@@ -1,0 +1,64 @@
+\usepackage{ifthen}
+\usepackage{enumerate}
+\usepackage{tcolorbox}
+\usepackage{newfile}
+\usepackage{newfile}
+\usepackage{pifont}
+
+\newboolean{issolution}
+\setboolean{issolution}{false}
+\newboolean{writesolutiondata}
+\setboolean{writesolutiondata}{false}
+
+\newcounter{problemnr}
+\setcounter{problemnr}{0}
+
+\def\examtronprobhead#1{\par\bigskip
+  {\large\sffamily\bfseries #1}\par
+}
+
+\def\examtronautoprobhead#1{\addtocounter{problemnr}{1}\examtronprobhead{Problem \arabic{problemnr}: #1}}
+\newenvironment{examtronproblem}[1]
+  {\begin{minipage}{\textwidth}\examtronautoprobhead{#1}%
+  \ifthenelse{\boolean{writesolutiondata}}{\addtostream{ans}{title \arabic{problemnr}: #1}}{}%
+  }
+  {\end{minipage}}
+\newenvironment{examtronchoicesbox}{\medskip\begin{tcolorbox}}{\end{tcolorbox}}
+\newenvironment{examtronchoiceenumerate}{\begin{enumerate}[(A)]}{\end{enumerate}}
+\newenvironment{examtronchoices}{%
+  \begin{examtronchoicesbox}
+  \begin{examtronchoiceenumerate}
+}{%
+  \end{examtronchoiceenumerate}
+  \end{examtronchoicesbox}
+}
+\def\writesolution#1#2{%
+  \setboolean{writesolutiondata}{true}
+  \newoutputstream{ans}
+  \openoutputfile{answers-#1-#2.dat}{ans}
+  \addtostream{ans}{version: #2}
+}
+\def\checkmark{\ding{51}}
+\def\crossmark{\ding{56}}
+\definecolor{green}{RGB}{0, 180, 0}
+\def\correct{%
+  \ifthenelse{\boolean{issolution}}{\textbf{\color{green}\checkmark\ Correct\ }}{}%
+  {%
+    \ifthenelse{\boolean{writesolutiondata}}{\addtostream{ans}{problem \arabic{problemnr}: \Alph{enumi}}}{}%
+  }%
+}
+\def\dumpquestion#1{
+  \ifthenelse{\boolean{issolution}}{\textbf{\color{red}\crossmark\ Omitted: #1}}{}%
+  \ifthenelse{\boolean{writesolutiondata}}{\addtostream{ans}{problem \arabic{problemnr}: dump}}{}%
+}
+\def\implicationchoices#1{%
+  How are (1) and (2) related? Choose the best answer.
+
+  \begin{examtronchoices}
+    \item \ifthenelse{\equal{#1}{A}}{\correct}{} (1) $\Rightarrow$ (2) --- If (1), then (2).
+    \item \ifthenelse{\equal{#1}{B}}{\correct}{} (1) $\Leftarrow$ (2) --- If (2), then (1).
+    \item \ifthenelse{\equal{#1}{C}}{\correct}{} (1) $\Leftrightarrow$ (2) --- (1) if and only if (2).
+    \item \ifthenelse{\equal{#1}{D}}{\correct}{} None of these.
+  \end{examtronchoices}
+}
+
