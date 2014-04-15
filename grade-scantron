@@ -1,6 +1,5 @@
 #! /usr/bin/env python3
 
-from pytools import Record
 import sys
 import re
 
@@ -14,6 +13,185 @@ from codecs import open
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+# {{{ copied from pytools
+
+# {{{ elementary statistics
+
+def average(iterable):
+    """Return the average of the values in iterable.
+
+    iterable may not be empty.
+    """
+    it = iterable.__iter__()
+
+    try:
+        sum = it.__next__()
+        count = 1
+    except StopIteration:
+        raise ValueError("empty average")
+
+    for value in it:
+        sum = sum + value
+        count += 1
+
+    return sum/count
+
+
+class VarianceAggregator:
+    """Online variance calculator.
+    See http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
+    Adheres to pysqlite's aggregate interface.
+    """
+    def __init__(self, entire_pop):
+        self.n = 0
+        self.mean = 0
+        self.m2 = 0
+
+        self.entire_pop = entire_pop
+
+    def step(self, x):
+        self.n += 1
+        delta = x - self.mean
+        self.mean += delta/self.n
+        self.m2 += delta*(x - self.mean)
+
+    def finalize(self):
+        if self.entire_pop:
+            if self.n == 0:
+                return None
+            else:
+                return self.m2/self.n
+        else:
+            if self.n <= 1:
+                return None
+            else:
+                return self.m2/(self.n - 1)
+
+
+def variance(iterable, entire_pop):
+    v_comp = VarianceAggregator(entire_pop)
+
+    for x in iterable:
+        v_comp.step(x)
+
+    return v_comp.finalize()
+
+
+def std_deviation(iterable, finite_pop):
+    from math import sqrt
+    return sqrt(variance(iterable, finite_pop))
+
+# }}}
+
+
+def argmax2(iterable, return_value=False):
+    it = iter(iterable)
+    try:
+        current_argmax, current_max = it.__next__()
+    except StopIteration:
+        raise ValueError("argmax of empty iterable")
+
+    for arg, item in it:
+        if item > current_max:
+            current_argmax = arg
+            current_max = item
+
+    if return_value:
+        return current_argmax, current_max
+    else:
+        return current_argmax
+
+
+class Record(object):
+    """An aggregate of named sub-variables. Assumes that each record sub-type
+    will be individually derived from this class.
+    """
+
+    __slots__ = []
+
+    def __init__(self, valuedict=None, exclude=["self"], **kwargs):
+        assert self.__class__ is not Record
+
+        try:
+            fields = self.__class__.fields
+        except AttributeError:
+            self.__class__.fields = fields = set()
+
+        if valuedict is not None:
+            kwargs.update(valuedict)
+
+        for key, value in kwargs.items():
+            if not key in exclude:
+                fields.add(key)
+                setattr(self, key, value)
+
+    def __repr__(self):
+        return "%s(%s)" % (
+            self.__class__.__name__,
+            ", ".join(
+                "%s=%r" % (fld, getattr(self, fld))
+                for fld in self.__class__.fields
+                if hasattr(self, fld)))
+
+
+# {{{ histogram formatting
+
+def string_histogram(
+        iterable, min_value=None, max_value=None,
+        bin_count=20, width=70, bin_starts=None, use_unicode=True):
+    if bin_starts is None:
+        if min_value is None or max_value is None:
+            iterable = list(iterable)
+            min_value = min(iterable)
+            max_value = max(iterable)
+
+        bin_width = (max_value - min_value)/bin_count
+        bin_starts = [min_value+bin_width*i for i in range(bin_count)]
+
+    bins = [0 for i in range(len(bin_starts))]
+
+    from bisect import bisect
+    for value in iterable:
+        if (max_value is not None
+                and value > max_value
+                or value < bin_starts[0]):
+            from warnings import warn
+            warn("string_histogram: out-of-bounds value ignored")
+        else:
+            bin_nr = bisect(bin_starts, value)-1
+            try:
+                bins[bin_nr] += 1
+            except:
+                print(value, bin_nr, bin_starts)
+                raise
+
+    from math import floor, ceil
+    if use_unicode:
+        def format_bar(cnt):
+            scaled = cnt*width/max_count
+            full = int(floor(scaled))
+            eighths = int(ceil((scaled-full)*8))
+            if eighths:
+                return full*unichr(0x2588) + unichr(0x2588+(8-eighths))
+            else:
+                return full*unichr(0x2588)
+    else:
+        def format_bar(cnt):
+            return int(ceil(cnt*width/max_count))*"#"
+
+    max_count = max(bins)
+    total_count = sum(bins)
+    return "\n".join("%9g |%9d | %3.0f %% | %s" % (
+        bin_start,
+        bin_value,
+        bin_value/total_count*100,
+        format_bar(bin_value))
+        for bin_start, bin_value in zip(bin_starts, bins))
+
+# }}}
+# }}}
 
 
 class ScantronExam(Record):
@@ -221,7 +399,6 @@ def get_grade_rec(exam, form, options):
             offset=offset,
             )
 
-    from pytools import argmax2
     best_result = argmax2(
         (grade_rec, grade_rec.points)
         for grade_rec in grade_recs.values())
@@ -442,8 +619,6 @@ def main():
             form_point_counts.setdefault(e.form_id, []) \
                 .append(grade_rec.points)
 
-        from pytools import string_histogram, average, std_deviation
-
         print(string_histogram(
             point_counts,
             min_value=0, max_value=(max(point_counts)), bin_count=15,
@@ -502,3 +677,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# vim: foldmethod=marker
