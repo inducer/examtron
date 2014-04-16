@@ -198,7 +198,7 @@ class ScantronExam(Record):
     pass
 
 
-def parse_answer(answer, network_id, problem_nr):
+def parse_answer(answer, network_id, problem_nr, feedback_items):
     if answer == " ":
         return None
 
@@ -212,6 +212,10 @@ def parse_answer(answer, network_id, problem_nr):
                 network_id,
                 problem_nr,
                 answer))
+
+        feedback_items.append(
+            "Checked multiple answers on P%d" % problem_nr)
+
         return None
 
     assert 0 <= answer <= 5
@@ -228,6 +232,8 @@ def read_scantron_file(lines, options):
         if len(l) != 174:
             raise ValueError("invalid record length: %d" % len(l))
 
+        feedback_items = []
+
         network_id = l[63:71].lower().strip()
         yield ScantronExam(
             last_name=l[40:50].rstrip(),
@@ -237,8 +243,11 @@ def read_scantron_file(lines, options):
             network_id=network_id,
             form_id=l[71],
             answers=[
-                parse_answer(a, network_id, pnr+1)
+                parse_answer(
+                    a, network_id, pnr+1,
+                    feedback_items)
                 for pnr, a in enumerate(l[72:168])],
+            feedback_items=feedback_items,
             )
 
 
@@ -386,7 +395,7 @@ def get_grade_rec(exam, form, options):
             try:
                 problem = form.problems[problem_nr]
             except KeyError:
-                if answer is not  None and not offset:
+                if answer is not None and not offset:
                     warn(
                         "student '%s' answered unknown problem "
                         "'%d' with '%s'" % (
@@ -397,6 +406,10 @@ def get_grade_rec(exam, form, options):
                 continue
 
             if answer is None:
+                missed_problems.append(
+                    MissedProblemRecord(
+                        problem=problem,
+                        your_answer=answer))
                 continue
 
             if problem.is_dumped:
@@ -432,7 +445,7 @@ def get_grade_rec(exam, form, options):
 
 def stringify_answer(answer):
     if answer is None:
-        return "no answer"
+        return "<no answer>"
     else:
         return chr(65+answer)
 
@@ -505,7 +518,7 @@ def print_problem_analytics(forms, exams):
 
 def get_export_points_and_feedback(grade_rec, forms, options):
     points = grade_rec.points
-    feedback_items = []
+    feedback_items = grade_rec.exam.feedback_items[:]
 
     feedback_items.append("Form %s" % grade_rec.exam.form_id)
     form = forms[grade_rec.exam.form_id]
