@@ -1,0 +1,159 @@
+#! /usr/bin/env python
+
+import random
+import sys
+import re
+
+
+def split_input(lines):
+    state = "preamble"
+
+    preamble_lines = []
+    postamble_lines = []
+    questions = []
+
+    for l in lines:
+        if state == "preamble":
+            if "begin{examtronproblem}" in l:
+                state = "question"
+                current_question = [l]
+            else:
+                preamble_lines.append(l)
+        elif state == "question":
+            if "end{examtronproblem}" in l:
+                state = "postamble"
+                current_question.append(l)
+                questions.append(current_question)
+            else:
+                current_question.append(l)
+        elif state == "postamble":
+            if "begin{examtronproblem}" in l:
+                postamble_lines = []
+                state = "question"
+                current_question = [l]
+            else:
+                postamble_lines.append(l)
+        else:
+            raise RuntimeError("invalid state")
+
+    return preamble_lines, questions, postamble_lines
+
+
+def split_question(q):
+    q_preamble_lines = []
+    q_postamble_lines = []
+    choices = []
+
+    state = "preamble"
+
+    for l in q:
+        if state == "preamble":
+            if ("begin{examtronchoices}" in l
+                    or "begin{examtronchoiceenumerate}" in l):
+                state = "choice"
+                current_choice = []
+
+            q_preamble_lines.append(l)
+        elif state == "choice":
+            if ("end{examtronchoices}" in l
+                    or "end{examtronchoiceenumerate}" in l):
+                state = "postamble"
+                if current_choice:
+                    choices.append(current_choice)
+                q_postamble_lines.append(l)
+            elif "\\item" in l:
+                if current_choice:
+                    choices.append(current_choice)
+                current_choice = [l]
+            else:
+                current_choice.append(l)
+        elif state == "postamble":
+            q_postamble_lines.append(l)
+        else:
+            raise RuntimeError("invalid state")
+
+    return q_preamble_lines, choices, q_postamble_lines
+
+
+def shuffle_options(questions):
+    new_questions = []
+
+    for q_nr, q in enumerate(questions):
+        q_preamble_lines, choices, q_postamble_lines = split_question(q)
+
+        if not choices:
+            print>>sys.stderr, "/!\\",
+        print>>sys.stderr, "Question %d: %d options found" \
+            % (q_nr+1, len(choices))
+
+        random.shuffle(choices)
+
+        new_q = q_preamble_lines[:]
+        for choice in choices:
+            new_q.extend(choice)
+        new_q.extend(q_postamble_lines)
+
+        new_questions.append(new_q)
+
+    return new_questions
+
+
+def main():
+    from optparse import OptionParser
+    parser = OptionParser(usage="%prog [options] exam.tex")
+    parser.add_option(
+        "--version", help="Set \\examversion", metavar="VERSION")
+    parser.add_option(
+        "--invariant", help="Set number of invariant questions",
+        metavar="INTEGER", default=0, type="int")
+    parser.add_option(
+        "--seed", help="Set random seed", type="int",
+        metavar="INTEGER", default=0)
+
+    options, args = parser.parse_args()
+
+    if len(args) != 1:
+        parser.print_help()
+        sys.exit(1)
+
+    if options.seed is None:
+        raise ValueError("seed not set!")
+
+    random.seed(options.seed)
+
+    with open(args[0], "r") as inf:
+        preamble_lines, questions, postamble_lines = split_input(inf)
+
+    if options.version:
+        preamble_lines = [
+            re.sub(
+                r"examversion\{.*\}",
+                "examversion{%s}" % options.version, l)
+            for l in preamble_lines]
+
+    print>>sys.stderr, "%d questions found" % len(questions)
+
+    questions = shuffle_options(questions)
+
+    shuffled_questions = questions[options.invariant:]
+    random.shuffle(shuffled_questions)
+    questions = questions[:options.invariant] + shuffled_questions
+    del shuffled_questions
+
+    sys.stdout.write("%% DO NOT EDIT! Edit source file instead.\n")
+    sys.stdout.write(
+        "%% shuffle source: %s, seed %s\n"
+        % (args[0], options.seed))
+    for l in preamble_lines:
+        sys.stdout.write(l)
+    sep = "% "+70*"-"+"\n"
+    for q in questions:
+        for l in q:
+            sys.stdout.write(l)
+        sys.stdout.write(sep)
+    for l in postamble_lines:
+        sys.stdout.write(l)
+
+
+if __name__ == "__main__":
+    main()

@@ -3,7 +3,7 @@ $pdflatex="pdflatex -interaction nonstopmode %O %S";
 $out_dir = 'out';
 $pdf_mode = 1;
 
-@BIBINPUTS = ( ".", ".." );
+$ENV{TEXINPUTS} .="${search_path_separator}..";
 @default_files = (
   '*.tex',
   );

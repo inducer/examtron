@@ -3,19 +3,20 @@
 Features:
 
  * Mark an answer as `\correct` in LaTeX, and the grading script will know what to do
+ * Shuffling of exam questions to generate multiple exam versions
  * Import of `.dat` files from ScanTron(tm) machines
  * Per-question analytics
  * Export of helpful feedback (with missed-question information including question titles) in [Moodle](http://moodle.org)-compatible CSV
 
 To see this code in action:
 
-* See `sample-exam.tex` for an example of what an exam might look like.
+* See `example/sample-exam.tex` for an example of what an exam might look like.
 * Run `latexmk` in this directory to compile the exam and obtain the exam data
   file.
-* Run `./grade.sh` in this directory.
-* Run `./grade.sh --print-stats` in this directory.
-* Run `./grade.sh --print-problem-analytics` in this directory.
-* Run `./grade.sh --write-csv=exam.csv` in this directory.
+* Run `./grade.sh` in this `example/`.
+* Run `./grade.sh --print-stats`.
+* Run `./grade.sh --print-problem-analytics`.
+* Run `./grade.sh --write-csv=exam.csv`.
 
 Questions and comments are welcome.
 
