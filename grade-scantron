@@ -8,6 +8,7 @@ if sys.version_info < (3,):
     raise RuntimeError("need Python 3!")
 
 from codecs import open
+from warnings import warn
 
 #from warnings import warn
 
@@ -157,7 +158,6 @@ def string_histogram(
         if (max_value is not None
                 and value > max_value
                 or value < bin_starts[0]):
-            from warnings import warn
             warn("string_histogram: out-of-bounds value ignored")
         else:
             bin_nr = bisect(bin_starts, value)-1
@@ -174,9 +174,9 @@ def string_histogram(
             full = int(floor(scaled))
             eighths = int(ceil((scaled-full)*8))
             if eighths:
-                return full*unichr(0x2588) + unichr(0x2588+(8-eighths))
+                return full*chr(0x2588) + chr(0x2588+(8-eighths))
             else:
-                return full*unichr(0x2588)
+                return full*chr(0x2588)
     else:
         def format_bar(cnt):
             return int(ceil(cnt*width/max_count))*"#"
@@ -198,6 +198,27 @@ class ScantronExam(Record):
     pass
 
 
+def parse_answer(answer, network_id, problem_nr):
+    if answer == " ":
+        return None
+
+    try:
+        # make 0-based
+        answer = int(answer) - 1
+    except ValueError:
+        warn(
+            "student '%s' checked multiple answers on problem "
+            "%d (scantron mark '%s')" % (
+                network_id,
+                problem_nr,
+                answer))
+        return None
+
+    assert 0 <= answer <= 5
+
+    return answer
+
+
 def read_scantron_file(lines, options):
     for l in lines:
         if not l.strip():
@@ -207,14 +228,17 @@ def read_scantron_file(lines, options):
         if len(l) != 174:
             raise ValueError("invalid record length: %d" % len(l))
 
+        network_id = l[63:71].lower().strip()
         yield ScantronExam(
             last_name=l[40:50].rstrip(),
             initial=l[50],
             university_id=l[51:60],
             section=l[60:63],
-            network_id=l[63:71].lower().strip(),
+            network_id=network_id,
             form_id=l[71],
-            answers=l[72:168],
+            answers=[
+                parse_answer(a, network_id, pnr+1)
+                for pnr, a in enumerate(l[72:168])],
             )
 
 
@@ -362,23 +386,18 @@ def get_grade_rec(exam, form, options):
             try:
                 problem = form.problems[problem_nr]
             except KeyError:
-                if answer != " " and not offset:
-                    from warnings import warn
+                if answer is not  None and not offset:
                     warn(
                         "student '%s' answered unknown problem "
                         "'%d' with '%s'" % (
-                            exam.last_name,
+                            exam.network_id,
                             problem_nr,
                             answer))
 
                 continue
 
-            if answer == " ":
+            if answer is None:
                 continue
-
-            # make 0-based
-            answer = int(answer) - 1
-            assert 0 <= answer <= 4
 
             if problem.is_dumped:
                 continue
@@ -444,11 +463,7 @@ def print_problem_analytics(forms, exams):
                     continue
 
                 answer = e.answers[problem_nr-1]
-                if answer == " ":
-                    answer = None
-                else:
-                    answer = int(answer)-1
-                    assert 0 <= answer <= 4
+                if answer is not None:
                     total_answers += 1
 
                 answer_freqs[answer] = answer_freqs.get(answer, 0) + 1
