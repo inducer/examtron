@@ -1,4 +1,6 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
+
+from __future__ import print_function
 
 import random
 import sys
@@ -82,9 +84,10 @@ def shuffle_options(questions):
         q_preamble_lines, choices, q_postamble_lines = split_question(q)
 
         if not choices:
-            print>>sys.stderr, "/!\\",
-        print>>sys.stderr, "Question %d: %d options found" \
-            % (q_nr+1, len(choices))
+            print("/!\\ ", file=sys.stderr, end="")
+        print(
+            "Question %d: %d options found"
+            % (q_nr+1, len(choices)), file=sys.stderr)
 
         random.shuffle(choices)
 
@@ -131,7 +134,7 @@ def main():
                 "examversion{%s}" % options.version, l)
             for l in preamble_lines]
 
-    print>>sys.stderr, "%d questions found" % len(questions)
+    print("%d questions found" % len(questions), file=sys.stderr)
 
     questions = shuffle_options(questions)
 
