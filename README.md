@@ -2,11 +2,12 @@
 
 Features:
 
- * Mark an answer as `\correct` in LaTeX, and the grading script will know what to do
- * Shuffling of exam questions to generate multiple exam versions
- * Import of `.dat` files from ScanTron(tm) machines
- * Per-question analytics
- * Export of helpful feedback (with missed-question information including question titles) in [Moodle](http://moodle.org)-compatible CSV
+* Mark an answer as `\correct` in LaTeX, and the grading script will know what to do
+* Shuffling of exam questions to generate multiple exam versions
+* Import of `.dat` files from ScanTron(tm) machines
+* Per-question analytics
+* Export of helpful feedback (with missed-question information including question titles) in [Moodle](http://moodle.org)-compatible CSV
+* All commands here have a `--help` option.
 
 To see this code in action:
 
