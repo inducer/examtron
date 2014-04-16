@@ -242,12 +242,30 @@ def read_scantron_file(lines, options):
             section=l[60:63],
             network_id=network_id,
             form_id=l[71],
-            answers=[
-                parse_answer(
+            answers={
+                pnr+1: parse_answer(
                     a, network_id, pnr+1,
                     feedback_items)
-                for pnr, a in enumerate(l[72:168])],
+                for pnr, a in enumerate(l[72:168])
+                },
             feedback_items=feedback_items,
+            )
+
+
+def read_yaml_file(exams, options):
+    for exam in exams:
+        yield ScantronExam(
+            last_name=exam["last_name"],
+            initial=exam["initial"],
+            university_id=exam["university_id"],
+            section=exam.get("section"),
+            network_id=exam["network_id"],
+            form_id=exam["form_id"],
+            answers={
+                problem_nr: ord(a) - ord("A")
+                for problem_nr, a in exam["answers"].items()
+                },
+            feedback_items=exam.get("feedback_items", []),
             )
 
 
@@ -388,9 +406,12 @@ def get_grade_rec(exam, form, options):
         points = options.bonus
         missed_problems = []
 
-        for problem_nr, answer in enumerate(exam.answers):
-            # make 1-based
-            problem_nr += 1 + offset
+        highest_numbered_problem = max(
+            max(exam.answers),
+            max(form.problems))
+
+        for problem_nr in range(1, highest_numbered_problem+1):
+            answer = exam.answers.get(problem_nr)
 
             try:
                 problem = form.problems[problem_nr]
@@ -475,7 +496,7 @@ def print_problem_analytics(forms, exams):
                 if e.form_id != form_id:
                     continue
 
-                answer = e.answers[problem_nr-1]
+                answer = e.answers.get(problem_nr)
                 if answer is not None:
                     total_answers += 1
 
@@ -601,11 +622,20 @@ def main():
     exams = []
     for arg in args:
         with open(arg, "rt") as inf:
-            exams.extend(list(read_scantron_file(inf, options)))
+            if arg.endswith(".dat") or arg.endswith(".DAT"):
+                exams.extend(list(read_scantron_file(inf, options)))
+            elif arg.endswith(".yaml") or arg.endswith(".yml"):
+                import yaml
+                exams.extend(read_yaml_file(yaml.load(inf), options))
 
     # {{{ figure out form versions
 
-    form_ids = sorted(set(s.form_id for s in exams))
+    form_ids = sorted(
+        set(s.form_id for s in exams)
+        |
+        set(s.form_id for s in exams)
+        )
+
     logger.info("%d form versions found: %s" % (
         len(form_ids), form_ids))
 
