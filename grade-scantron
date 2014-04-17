@@ -257,7 +257,7 @@ def read_yaml_file(exams, options):
         yield ScantronExam(
             last_name=exam["last_name"],
             initial=exam["initial"],
-            university_id=exam["university_id"],
+            university_id=exam.get("university_id"),
             section=exam.get("section"),
             network_id=exam["network_id"],
             form_id=exam["form_id"],
