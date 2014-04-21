@@ -194,140 +194,25 @@ def string_histogram(
 # }}}
 
 
+# {{{ data model
+
 class ScantronExam(Record):
-    pass
+    """
+    .. attribute:: last_name
+    .. attribute:: initial
+    .. attribute:: university_id
+    .. attribute:: section
+    .. attribute:: network_id
+    .. attribute:: form_id
+    .. attribute:: answers
 
+        mapping from 1-based problem number to zero-based answer index
 
-def parse_answer(answer, network_id, problem_nr, feedback_items):
-    if answer == " ":
-        return None
+    .. attribute:: feedback_items
+    .. attribute:: points_adjustment
 
-    try:
-        # make 0-based
-        answer = int(answer) - 1
-    except ValueError:
-        warn(
-            "student '%s' checked multiple answers on problem "
-            "%d (scantron mark '%s')" % (
-                network_id,
-                problem_nr,
-                answer))
-
-        feedback_items.append(
-            "Checked multiple answers on P%d" % problem_nr)
-
-        return None
-
-    assert 0 <= answer <= 5
-
-    return answer
-
-
-def read_scantron_file(lines, options):
-    for l in lines:
-        if not l.strip():
-            continue
-        if len(l) == 1:
-            continue
-        if len(l) != 174:
-            raise ValueError("invalid record length: %d" % len(l))
-
-        feedback_items = []
-
-        network_id = l[63:71].lower().strip()
-        yield ScantronExam(
-            last_name=l[40:50].rstrip(),
-            initial=l[50],
-            university_id=l[51:60],
-            section=l[60:63],
-            network_id=network_id,
-            form_id=l[71],
-            answers={
-                pnr+1: parse_answer(
-                    a, network_id, pnr+1,
-                    feedback_items)
-                for pnr, a in enumerate(l[72:168])
-                },
-            feedback_items=feedback_items,
-            )
-
-
-def read_yaml_file(exams, options):
-    for exam in exams:
-        yield ScantronExam(
-            last_name=exam["last_name"],
-            initial=exam["initial"],
-            university_id=exam.get("university_id"),
-            section=exam.get("section"),
-            network_id=exam["network_id"],
-            form_id=exam["form_id"],
-            answers={
-                problem_nr: ord(a) - ord("A")
-                for problem_nr, a in exam["answers"].items()
-                },
-            feedback_items=exam.get("feedback_items", []),
-            )
-
-
-def separate_out_keys(exams):
-    scantron_keys = {}
-
-    new_exams = []
-
-    for s in exams:
-        if (s.last_name.rstrip() == "KEY"
-                and s.university_id.startswith("99999999")):
-            if s.form_id in scantron_keys:
-                raise ValueError("two keys for form id '%s'" % s.form_id)
-            scantron_keys[s.form_id] = s
-        else:
-            new_exams.append(s)
-
-    return new_exams, scantron_keys
-
-
-def read_latex_key(name, inf, forms):
-    version_re = re.compile("^version: (.+)$")
-    problem_re = re.compile("^problem ([0-9]+): (.+)$")
-    title_re = re.compile("^title ([0-9]+): (.+)$")
-
-    lines = list(inf)
-
-    version_match = version_re.match(lines[0])
-    if version_match is None:
-        raise RuntimeError("version line not found in '%s'" % name)
-    form_id = version_match.group(1)
-    lines = lines[1:]
-
-    form = forms[form_id]
-    for l in lines:
-        problem_match = problem_re.match(l)
-        title_match = title_re.match(l)
-
-        if problem_match:
-            problem_nr = int(problem_match.group(1))
-            action = problem_match.group(2)
-
-            if action == "dump":
-                form.dump_problem(problem_nr)
-            else:
-                assert len(action) == 1
-                answer = ord(action) - ord("A")
-
-                form.add_correct_answer(problem_nr, answer)
-        elif title_match:
-            problem_nr = int(title_match.group(1))
-            form.get_problem(problem_nr).title = title_match.group(2).strip()
-        else:
-            raise RuntimeError(
-                "invalid line found in '%s': %s"
-                % (name, l))
-
-    if form.full_score is None:
-        form.full_score = sum(
-            1
-            for p in form.problems.values()
-            if p.correct_answers)
+        tuple of (delta, reason)
+    """
 
 
 class Problem(Record):
@@ -398,6 +283,196 @@ class MissedProblemRecord(Record):
     .. attribute:: your_answer
     """
 
+# }}}
+
+
+# {{{ parse
+
+def parse_answer(answer, network_id, problem_nr, feedback_items):
+    if answer == " ":
+        return None
+
+    try:
+        # make 0-based
+        answer = int(answer) - 1
+    except ValueError:
+        warn(
+            "student '%s' checked multiple answers on problem "
+            "%d (scantron mark '%s')" % (
+                network_id,
+                problem_nr,
+                answer))
+
+        feedback_items.append(
+            "Checked multiple answers on P%d" % problem_nr)
+
+        return None
+
+    assert 0 <= answer <= 5
+
+    return answer
+
+
+def read_scantron_file(exams, lines, options):
+    for l in lines:
+        if not l.strip():
+            continue
+        if len(l) == 1:
+            continue
+        if len(l) != 174:
+            raise ValueError("invalid record length: %d" % len(l))
+
+        feedback_items = []
+
+        network_id = l[63:71].lower().strip()
+        last_name = l[40:50].rstrip()
+
+        exam = ScantronExam(
+            last_name=last_name,
+            initial=l[50],
+            university_id=l[51:60],
+            section=l[60:63],
+            network_id=network_id,
+            form_id=l[71],
+            answers={
+                pnr+1: parse_answer(
+                    a, network_id, pnr+1,
+                    feedback_items)
+                for pnr, a in enumerate(l[72:168])
+                },
+            feedback_items=feedback_items,
+            points_adjustment=None
+            )
+
+        if any(exam.network_id == network_id for exam in exams):
+            logger.warn(
+                "duplicate network ID '%s' in scantron data (last name '%s')"
+                % (network_id, last_name))
+
+        exams.append(exam)
+
+
+def read_yaml_file(exams, yml_data, options):
+    for yml_entry in yml_data:
+        network_id = yml_entry["network_id"]
+        exams_to_update = [
+            exam
+            for exam in exams
+            if exam.network_id == network_id]
+
+        is_new = len(exams_to_update) == 0
+        if is_new:
+            exam = ScantronExam(network_id=network_id)
+            exams.append(exam)
+        elif len(exams_to_update) > 1:
+            raise RuntimeError(
+                "%d exams match network id '%s'--canot update"
+                % (len(exams_to_update), network_id))
+        else:
+            exam, = exams_to_update
+
+        def copy_if_present(field, optional, default=None):
+            if field not in yml_entry:
+                if is_new:
+                    if not optional:
+                        raise RuntimeError(
+                            "YAML entry '%s' is missing field '%s'"
+                            % (network_id, field))
+                    else:
+                        setattr(exam, field, default)
+
+                return
+
+            if not is_new:
+                logger.info(
+                    "updating field '%s' exam for network id '%s' from YAML"
+                    % (field, network_id))
+
+            value = yml_entry[field]
+            if field == "answers":
+                value = {
+                    problem_nr: ord(a) - ord("A")
+                    for problem_nr, a in value.items()
+                    }
+
+            setattr(exam, field, value)
+
+        copy_if_present("last_name", optional=False)
+        copy_if_present("initial", optional=False)
+        copy_if_present("university_id", optional=True)
+        copy_if_present("section", optional=True)
+        copy_if_present("form_id", optional=False)
+        copy_if_present("answers", optional=False)
+        copy_if_present("feedback_items", optional=True, default=[])
+        copy_if_present("points_adjustment", optional=True)
+
+# }}}
+
+
+# {{{ key handling
+
+def separate_out_keys(exams):
+    scantron_keys = {}
+
+    new_exams = []
+
+    for s in exams:
+        if (s.last_name.rstrip() == "KEY"
+                and s.university_id.startswith("99999999")):
+            if s.form_id in scantron_keys:
+                raise ValueError("two keys for form id '%s'" % s.form_id)
+            scantron_keys[s.form_id] = s
+        else:
+            new_exams.append(s)
+
+    return new_exams, scantron_keys
+
+
+def read_latex_key(name, inf, forms):
+    version_re = re.compile("^version: (.+)$")
+    problem_re = re.compile("^problem ([0-9]+): (.+)$")
+    title_re = re.compile("^title ([0-9]+): (.+)$")
+
+    lines = list(inf)
+
+    version_match = version_re.match(lines[0])
+    if version_match is None:
+        raise RuntimeError("version line not found in '%s'" % name)
+    form_id = version_match.group(1)
+    lines = lines[1:]
+
+    form = forms[form_id]
+    for l in lines:
+        problem_match = problem_re.match(l)
+        title_match = title_re.match(l)
+
+        if problem_match:
+            problem_nr = int(problem_match.group(1))
+            action = problem_match.group(2)
+
+            if action == "dump":
+                form.dump_problem(problem_nr)
+            else:
+                assert len(action) == 1
+                answer = ord(action) - ord("A")
+
+                form.add_correct_answer(problem_nr, answer)
+        elif title_match:
+            problem_nr = int(title_match.group(1))
+            form.get_problem(problem_nr).title = title_match.group(2).strip()
+        else:
+            raise RuntimeError(
+                "invalid line found in '%s': %s"
+                % (name, l))
+
+    if form.full_score is None:
+        form.full_score = sum(
+            1
+            for p in form.problems.values()
+            if p.correct_answers)
+
+# }}}
+
 
 def get_grade_rec(exam, form, options):
     grade_recs = {}
@@ -409,6 +484,11 @@ def get_grade_rec(exam, form, options):
         highest_numbered_problem = max(
             max(exam.answers),
             max(form.problems))
+
+        if exam.points_adjustment is not None:
+            delta, _ = exam.points_adjustment
+            points += delta
+            del delta
 
         for problem_nr in range(1, highest_numbered_problem+1):
             answer = exam.answers.get(problem_nr)
@@ -426,14 +506,8 @@ def get_grade_rec(exam, form, options):
 
                 continue
 
-            if answer is None:
-                missed_problems.append(
-                    MissedProblemRecord(
-                        problem=problem,
-                        your_answer=answer))
-                continue
-
             if problem.is_dumped:
+                points += 1
                 continue
 
             correct_answers = problem.correct_answers
@@ -561,6 +635,23 @@ def get_export_points_and_feedback(grade_rec, forms, options):
     else:
         feedback_items.append("All answers correct.")
 
+    if grade_rec.exam.points_adjustment is not None:
+        delta, reason = grade_rec.exam.points_adjustment
+
+        if delta > 0:
+            feedback_items.append(
+                "%d point(s) added for '%s'"
+                % (delta, reason)
+                )
+        elif delta < 0:
+            feedback_items.append(
+                "%d point(s) subtracted for '%s'"
+                % (-delta, reason)
+                )
+
+        del delta
+        del reason
+
     if options.cap and points > options.cap:
         feedback_items.append(
             "Achieved points: %d. Extra credit capped to: %d/%d."
@@ -623,10 +714,10 @@ def main():
     for arg in args:
         with open(arg, "rt") as inf:
             if arg.endswith(".dat") or arg.endswith(".DAT"):
-                exams.extend(list(read_scantron_file(inf, options)))
+                read_scantron_file(exams, inf, options)
             elif arg.endswith(".yaml") or arg.endswith(".yml"):
                 import yaml
-                exams.extend(read_yaml_file(yaml.load(inf), options))
+                read_yaml_file(exams, yaml.load(inf), options)
 
     # {{{ figure out form versions
 
