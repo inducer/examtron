@@ -494,7 +494,7 @@ def get_grade_rec(exam, form, options):
             answer = exam.answers.get(problem_nr)
 
             try:
-                problem = form.problems[problem_nr]
+                problem = form.problems[problem_nr+offset]
             except KeyError:
                 if answer is not None and not offset:
                     warn(
