@@ -394,8 +394,12 @@ def read_yaml_file(exams, yml_data, options):
                     problem_nr: ord(a) - ord("A")
                     for problem_nr, a in value.items()
                     }
-
-            setattr(exam, field, value)
+                if hasattr(exam, "answers"):
+                    exam.answers.update(value)
+                else:
+                    setattr(exam, field, value)
+            else:
+                setattr(exam, field, value)
 
         copy_if_present("last_name", optional=False)
         copy_if_present("initial", optional=False)
