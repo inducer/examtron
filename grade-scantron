@@ -485,6 +485,16 @@ def get_grade_rec(exam, form, options):
         points = options.bonus
         missed_problems = []
 
+        if not form.problems:
+            raise RuntimeError(
+                "form version '%s' has no known correct answers"
+                % (form.form_id))
+
+        if not exam.answers:
+            raise RuntimeError(
+                "exam '%s' has no answers at all"
+                % (exam.network_id))
+
         highest_numbered_problem = max(
             max(exam.answers),
             max(form.problems))
