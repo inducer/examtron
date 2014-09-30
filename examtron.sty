@@ -32,6 +32,10 @@
   \end{examtronchoiceenumerate}
   \end{examtronchoicesbox}
 }
+\newenvironment{examtronchoicemulticolenumerate}
+{\begin{examtronchoiceenumerate}\begin{multicols}{2}}
+{\end{multicols}\end{examtronchoiceenumerate}}
+
 \def\writesolution#1#2{%
   \setboolean{writesolutiondata}{true}
   \newoutputstream{ans}

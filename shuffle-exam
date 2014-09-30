@@ -51,14 +51,16 @@ def split_question(q):
     for l in q:
         if state == "preamble":
             if ("begin{examtronchoices}" in l
-                    or "begin{examtronchoiceenumerate}" in l):
+                    or "begin{examtronchoiceenumerate}" in l
+                    or "begin{examtronchoicemulticolenumerate}" in l):
                 state = "choice"
                 current_choice = []
 
             q_preamble_lines.append(l)
         elif state == "choice":
             if ("end{examtronchoices}" in l
-                    or "end{examtronchoiceenumerate}" in l):
+                    or "end{examtronchoiceenumerate}" in l
+                    or "end{examtronchoicemulticolenumerate}" in l):
                 state = "postamble"
                 if current_choice:
                     choices.append(current_choice)
