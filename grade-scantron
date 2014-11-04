@@ -10,7 +10,7 @@ if sys.version_info < (3,):
 from codecs import open
 from warnings import warn
 
-#from warnings import warn
+# from warnings import warn
 
 import logging
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ class Record(object):
             kwargs.update(valuedict)
 
         for key, value in kwargs.items():
-            if not key in exclude:
+            if key not in exclude:
                 fields.add(key)
                 setattr(self, key, value)
 
@@ -435,7 +435,7 @@ def separate_out_keys(exams):
 def read_latex_key(name, inf, forms):
     version_re = re.compile("^version: (.+)$")
     problem_re = re.compile("^problem ([0-9]+): (.+)$")
-    title_re = re.compile("^title ([0-9]+): (.+)$")
+    title_re = re.compile("^title ([0-9]+):(.*)$")
 
     lines = list(inf)
 
@@ -642,7 +642,8 @@ def get_export_points_and_feedback(grade_rec, forms, options):
                     "".join(
                         stringify_answer(ans)
                         for ans in mpr.problem.correct_answers),
-                    shorten_title(mpr.problem.title))
+                    #shorten_title(mpr.problem.title))
+                    mpr.problem.title)
                 for mpr in grade_rec.missed_problems
                 if mpr.problem.correct_answers)
             )
