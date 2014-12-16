@@ -706,6 +706,7 @@ def main():
 
     parser.add_option("--print-grades", action="store_true")
     parser.add_option("--print-stats", action="store_true")
+    parser.add_option("--no-form-stats", action="store_true")
     parser.add_option("--print-problem-analytics", action="store_true")
     parser.add_option("--write-csv", metavar="FILE")
     parser.add_option("--print-student-report", metavar="NETWORK_ID")
@@ -792,9 +793,10 @@ def main():
         print("Mean: %f" % (average(point_counts)))
         print("Std deviation: %f" % (std_deviation(point_counts, False)))
         print()
-        for form_id in sorted(form_point_counts):
-            print("Form %s mean: %f" % (
-                form_id, average(form_point_counts[form_id])))
+        if not options.no_form_stats:
+            for form_id in sorted(form_point_counts):
+                print("Form %s mean: %f" % (
+                    form_id, average(form_point_counts[form_id])))
 
     if options.print_grades:
         for e in exams:
