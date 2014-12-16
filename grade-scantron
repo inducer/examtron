@@ -224,6 +224,7 @@ class Problem(Record):
         set of correct answers as set of 0-based numbers
 
     .. attribute:: is_dumped
+    .. attribute:: tags
     """
 
     def __init__(self, number):
@@ -232,7 +233,8 @@ class Problem(Record):
             number=number,
             title="<no title>",
             correct_answers=set(),
-            is_dumped=None)
+            is_dumped=None,
+            tags=set())
 
 
 class FormData(object):
@@ -266,6 +268,13 @@ class FormData(object):
         """
 
         self.get_problem(problem_nr).correct_answers.add(answer_nr)
+
+    def add_tag(self, problem_nr, tag):
+        """
+        :arg problem_nr: 1-based
+        """
+
+        self.get_problem(problem_nr).tags.add(tag)
 
 
 class GradeRecord(Record):
@@ -435,6 +444,7 @@ def separate_out_keys(exams):
 def read_latex_key(name, inf, forms):
     version_re = re.compile("^version: (.+)$")
     problem_re = re.compile("^problem ([0-9]+): (.+)$")
+    problem_tag_re = re.compile("^problem tag ([0-9]+): (.+)$")
     title_re = re.compile("^title ([0-9]+):(.*)$")
 
     lines = list(inf)
@@ -448,6 +458,7 @@ def read_latex_key(name, inf, forms):
     form = forms[form_id]
     for l in lines:
         problem_match = problem_re.match(l)
+        problem_tag_match = problem_tag_re.match(l)
         title_match = title_re.match(l)
 
         if problem_match:
@@ -461,6 +472,11 @@ def read_latex_key(name, inf, forms):
                 answer = ord(action) - ord("A")
 
                 form.add_correct_answer(problem_nr, answer)
+        elif problem_tag_match:
+            problem_nr = int(problem_tag_match.group(1))
+            tag = problem_tag_match.group(2)
+
+            form.add_tag(problem_nr, tag)
         elif title_match:
             problem_nr = int(title_match.group(1))
             form.get_problem(problem_nr).title = title_match.group(2).strip()

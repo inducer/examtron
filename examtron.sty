@@ -66,3 +66,6 @@
   \end{examtronchoices}
 }
 
+\def\tagproblem#1{%
+  \ifthenelse{\boolean{writesolutiondata}}{\addtostream{ans}{problem tag \arabic{problemnr}: #1}}{}%
+}
