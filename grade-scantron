@@ -720,12 +720,12 @@ def main():
         "(should include 0)",
         metavar="OFFSET,OFFSET")
 
-    parser.add_option("--print-grades", action="store_true")
-    parser.add_option("--print-stats", action="store_true")
+    parser.add_option("-g", "--print-grades", action="store_true")
+    parser.add_option("-s", "--print-stats", action="store_true")
     parser.add_option("--no-form-stats", action="store_true")
     parser.add_option("--print-problem-analytics", action="store_true")
-    parser.add_option("--write-csv", metavar="FILE")
-    parser.add_option("--print-student-report", metavar="NETWORK_ID")
+    parser.add_option("-w", "--write-csv", metavar="FILE")
+    parser.add_option("-r", "--print-student-report", metavar="NETWORK_ID")
 
     options, args = parser.parse_args()
 
@@ -851,19 +851,32 @@ def main():
                         points, u" * ".join(feedback_items)])
 
     if options.print_student_report:
+        found = []
+        query = options.print_student_report.lower()
         for e in exams:
-            if e.network_id.lower() == options.print_student_report.lower():
-                grade_rec = get_grade_rec(e, forms[e.form_id], options)
+            if query in e.network_id.lower() or query in e.last_name.lower():
+                found.append(e)
 
-                points, feedback_items = \
-                    get_export_points_and_feedback(grade_rec, forms, options)
+        if len(found) == 0:
+            print("*** No matching exams found")
+        elif len(found) > 1:
+            print("*** Multiple matching exams:")
+            for e in found:
+                print("%s -- %s, %s" % (e.network_id, e.last_name, e.initial))
+        else:
+            e, = found
 
-                for fbi in feedback_items:
-                    print(fbi)
+            grade_rec = get_grade_rec(e, forms[e.form_id], options)
 
-                print()
-                print("Name: %s, %s" % (e.last_name, e.initial))
-                print("Points: %d" % points)
+            points, feedback_items = \
+                get_export_points_and_feedback(grade_rec, forms, options)
+
+            for fbi in feedback_items:
+                print(fbi)
+
+            print()
+            print("Name: %s, %s" % (e.last_name, e.initial))
+            print("Points: %d" % points)
 
 if __name__ == "__main__":
     main()
