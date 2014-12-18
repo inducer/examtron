@@ -441,7 +441,7 @@ def separate_out_keys(exams):
     return new_exams, scantron_keys
 
 
-def read_latex_key(name, inf, forms):
+def read_latex_key(name, inf, get_form):
     version_re = re.compile("^version: (.+)$")
     problem_re = re.compile("^problem ([0-9]+): (.+)$")
     problem_tag_re = re.compile("^problem tag ([0-9]+): (.+)$")
@@ -455,7 +455,7 @@ def read_latex_key(name, inf, forms):
     form_id = version_match.group(1)
     lines = lines[1:]
 
-    form = forms[form_id]
+    form = get_form(form_id)
     for l in lines:
         problem_match = problem_re.match(l)
         problem_tag_match = problem_tag_re.match(l)
@@ -759,12 +759,17 @@ def main():
         set(s.form_id for s in exams)
         )
 
-    logger.info("%d form versions found: %s" % (
-        len(form_ids), form_ids))
+    forms = {}
 
-    forms = dict(
-        (form_id, FormData(form_id, full_score=options.full_score))
-        for form_id in form_ids)
+    def get_form(form_id):
+        try:
+            return forms[form_id]
+        except KeyError:
+            forms[form_id] = form = FormData(form_id, full_score=options.full_score)
+            return form
+
+    for form_id in form_ids:
+        get_form(form_id)
 
     # }}}
 
@@ -782,14 +787,17 @@ def main():
     if options.latex_key is not None:
         for fn in options.latex_key:
             with open(fn, "rt") as inf:
-                read_latex_key(fn, inf, forms)
+                read_latex_key(fn, inf, get_form)
 
         for form_id, key in scantron_keys.items():
-            grade_rec = get_grade_rec(key, forms[key.form_id], options)
+            grade_rec = get_grade_rec(key, get_form(key.form_id), options)
             logger.info("scantron key for form '%s' received %d points" % (
                 form_id, grade_rec.points))
 
     # }}}
+
+    logger.info("%d form versions found: %s" % (
+        len(form_ids), form_ids))
 
     if options.print_stats:
         point_counts = []
