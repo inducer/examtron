@@ -871,11 +871,13 @@ def main():
             points, feedback_items = \
                 get_export_points_and_feedback(grade_rec, forms, options)
 
+            print()
             for fbi in feedback_items:
                 print(fbi)
 
             print()
             print("Name: %s, %s" % (e.last_name, e.initial))
+            print("Network ID: %s" % e.network_id)
             print("Points: %d" % points)
 
 if __name__ == "__main__":
