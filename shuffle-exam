@@ -114,6 +114,9 @@ def main():
     parser.add_option(
         "--seed", help="Set random seed", type="int",
         metavar="INTEGER", default=0)
+    parser.add_option(
+        "--set-issolution", help="Set the 'issolution' variable", type="str",
+        metavar="STRING", default=None)
 
     options, args = parser.parse_args()
 
@@ -134,6 +137,12 @@ def main():
             re.sub(
                 r"examversion\{.*\}",
                 "examversion{%s}" % options.version, l)
+            for l in preamble_lines]
+    if options.set_issolution:
+        preamble_lines = [
+            re.sub(
+                r"setboolean\{issolution\}\{.*\}",
+                "setboolean{issolution}{%s}" % options.set_issolution, l)
             for l in preamble_lines]
 
     print("%d questions found" % len(questions), file=sys.stderr)
