@@ -503,8 +503,8 @@ def get_grade_rec(exam, form, options):
 
         if not form.problems:
             raise RuntimeError(
-                "form version '%s' has no known correct answers"
-                % (form.form_id))
+                "form version '%s' (from net ID '%s') has no known correct answers"
+                % (form.form_id, exam.network_id))
 
         if not exam.answers:
             raise RuntimeError(
@@ -541,6 +541,10 @@ def get_grade_rec(exam, form, options):
                 continue
 
             correct_answers = problem.correct_answers
+            if not problem.correct_answers:
+                raise RuntimeError("form version '%s' problem %d has "
+                        "no correct answers" % (
+                            form.form_id, problem_nr))
             if answer in correct_answers:
                 points += 1
             else:
