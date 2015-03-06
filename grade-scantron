@@ -208,6 +208,11 @@ class ScantronExam(Record):
 
         mapping from 1-based problem number to zero-based answer index
 
+    .. attribute:: scantron_read_errors
+
+        a list of 1-based problem numbers where scantron read errors
+        were encountered
+
     .. attribute:: feedback_items
     .. attribute:: points_adjustment
 
@@ -283,6 +288,7 @@ class GradeRecord(Record):
     .. attribute:: points
     .. attribute:: missed_problems
     .. attribute:: offset
+    .. attribute:: feedback_items
     """
 
 
@@ -312,10 +318,7 @@ def parse_answer(answer, network_id, problem_nr, feedback_items):
                 problem_nr,
                 answer))
 
-        feedback_items.append(
-            "Checked multiple answers on P%d" % problem_nr)
-
-        return None
+        return -1
 
     assert 0 <= answer <= 5
 
@@ -336,6 +339,18 @@ def read_scantron_file(exams, lines, options):
         network_id = l[63:71].lower().strip()
         last_name = l[40:50].rstrip()
 
+        answers = {}
+        scantron_read_errors = []
+        for pnr, a in enumerate(l[72:168]):
+            ans_value = parse_answer(
+                    a, network_id, pnr+1,
+                    feedback_items)
+            if ans_value == -1:
+                scantron_read_errors.append(pnr+1)
+                ans_value = None
+
+            answers[pnr+1] = ans_value
+
         exam = ScantronExam(
             last_name=last_name,
             initial=l[50],
@@ -343,12 +358,8 @@ def read_scantron_file(exams, lines, options):
             section=l[60:63],
             network_id=network_id,
             form_id=l[71],
-            answers={
-                pnr+1: parse_answer(
-                    a, network_id, pnr+1,
-                    feedback_items)
-                for pnr, a in enumerate(l[72:168])
-                },
+            answers=answers,
+            scantron_read_errors=scantron_read_errors,
             feedback_items=feedback_items,
             points_adjustment=None
             )
@@ -405,6 +416,9 @@ def read_yaml_file(exams, yml_data, options):
                     }
                 if hasattr(exam, "answers"):
                     exam.answers.update(value)
+                    for pnr in value:
+                        if pnr in exam.scantron_read_errors:
+                            exam.scantron_read_errors.remove(pnr)
                 else:
                     setattr(exam, field, value)
             else:
@@ -416,6 +430,7 @@ def read_yaml_file(exams, yml_data, options):
         copy_if_present("section", optional=True)
         copy_if_present("form_id", optional=False)
         copy_if_present("answers", optional=False)
+        copy_if_present("scantron_read_errors", optional=True, default=[])
         copy_if_present("feedback_items", optional=True, default=[])
         copy_if_present("points_adjustment", optional=True)
 
@@ -520,6 +535,11 @@ def get_grade_rec(exam, form, options):
             points += delta
             del delta
 
+        feedback_items = []
+        for pnr in exam.scantron_read_errors:
+            feedback_items.append(
+                "Scantron read error (multiple answers?) on P%d" % pnr)
+
         for problem_nr in range(1, highest_numbered_problem+1):
             answer = exam.answers.get(problem_nr)
 
@@ -558,6 +578,7 @@ def get_grade_rec(exam, form, options):
             points=points,
             missed_problems=missed_problems,
             offset=offset,
+            feedback_items=feedback_items,
             )
 
     best_result = argmax2(
@@ -651,6 +672,8 @@ def get_export_points_and_feedback(grade_rec, forms, options):
 
     feedback_items.append("Form %s" % grade_rec.exam.form_id)
     form = forms[grade_rec.exam.form_id]
+
+    feedback_items = feedback_items + grade_rec.feedback_items
 
     if grade_rec.missed_problems:
         feedback_items.append(
